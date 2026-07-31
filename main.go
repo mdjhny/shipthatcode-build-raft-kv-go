@@ -2,9 +2,30 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strings"
 )
+
+type protocol string
+
+const (
+	None   protocol = "NONE"
+	Raft   protocol = "RAFT"
+	Paxos  protocol = "PAXOS"
+	Bft    protocol = "BFT"
+	Gossip protocol = "GOSSIP"
+)
+
+var classifier = map[string]protocol{
+	"A single-node application":                            None,
+	"PostgreSQL primary with read replicas":                None,
+	"HashiCorp Consul KV store":                            Raft,
+	"Service mesh discovering 1000s of nodes":              Gossip,
+	"Distributed ledger across mutually-untrusted parties": Bft,
+	"Internal Google service replicating metadata":         Paxos,
+	"3-node etcd cluster":                                  Raft,
+}
 
 func main() {
 	sc := bufio.NewScanner(os.Stdin)
@@ -18,6 +39,7 @@ func main() {
 		}
 		parts := strings.Fields(line)
 		_ = parts
-		// TODO: handle each command per problem description.
+		p := classifier[line]
+		fmt.Fprintln(out, p)
 	}
 }
