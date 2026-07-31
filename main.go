@@ -4,33 +4,67 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
-type protocol string
+type NodeState string
 
 const (
-	None   protocol = "NONE"
-	Raft   protocol = "RAFT"
-	Paxos  protocol = "PAXOS"
-	Bft    protocol = "BFT"
-	Gossip protocol = "GOSSIP"
+	NodeStateFollower  NodeState = "follower"
+	NodeStateCandidate NodeState = "candidate"
+	NodeStateLeader    NodeState = "leader"
 )
 
-var classifier = map[string]protocol{
-	"A single-node application":                               None,
-	"PostgreSQL primary with read replicas":                   None,
-	"HashiCorp Consul KV store":                               Raft,
-	"Service mesh discovering 1000s of nodes":                 Gossip,
-	"Distributed ledger across mutually-untrusted parties":    Bft,
-	"Internal Google service replicating metadata":            Paxos,
-	"3-node etcd cluster":                                     Raft,
-	"Blockchain replication across competing miners":          Bft,
-	"Kubernetes control plane state store":                    Raft,
-	"Google Chubby lock service":                              Paxos,
-	"Cassandra-like ring membership of 1000 nodes via gossip": Gossip,
-	"CockroachDB ranges":                                      Raft,
-	"Single-node Redis instance":                              None,
+type Command string
+
+const (
+	CommandInit            Command = "INIT"
+	CommandStatus          Command = "STATUS"
+	CommandBecomeCandidate Command = "BECOME_CANDIDATE"
+	CommandBecomeLeader    Command = "BECOME_LEADER"
+	CommandBecomeFollower  Command = "BECOME_FOLLOWER"
+)
+
+type Node struct {
+	name     string
+	state    NodeState
+	term     int64
+	votedFor string
+}
+
+func newNode() *Node {
+	return &Node{
+		state:    NodeStateFollower,
+		term:     0,
+		votedFor: "none",
+	}
+}
+
+func (n *Node) handleCmd(parts []string) {
+	cmd := Command(parts[0])
+	switch cmd {
+	case CommandInit:
+		n.name = parts[1]
+		n.state = NodeStateFollower
+		n.term = 0
+		n.votedFor = "none"
+	case CommandStatus:
+		fmt.Printf("state=%s term=%d voted_for=%s\n", n.state, n.term, n.votedFor)
+	case CommandBecomeCandidate:
+		n.state = NodeStateCandidate
+		n.term++
+		n.votedFor = n.name
+	case CommandBecomeLeader:
+		n.state = NodeStateLeader
+	case CommandBecomeFollower:
+		term, _ := strconv.ParseInt(parts[1], 10, 64)
+		n.term = term
+		n.state = NodeStateFollower
+		n.votedFor = "none"
+	default:
+		fmt.Println("Unknown command:", cmd)
+	}
 }
 
 func main() {
@@ -38,14 +72,13 @@ func main() {
 	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
 	out := bufio.NewWriter(os.Stdout)
 	defer out.Flush()
+	node := newNode()
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
 		parts := strings.Fields(line)
-		_ = parts
-		p := classifier[line]
-		fmt.Fprintln(out, p)
+		node.handleCmd(parts)
 	}
 }
