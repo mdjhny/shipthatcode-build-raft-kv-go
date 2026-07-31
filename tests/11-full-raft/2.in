@@ -1,0 +1,4 @@
+INIT 3
+TIMEOUT 1
+WRITE x 5
+READ x

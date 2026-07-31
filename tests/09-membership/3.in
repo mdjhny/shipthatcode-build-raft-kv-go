@@ -1,0 +1,3 @@
+INIT n1,n2,n3
+ADD n4
+MAJORITY n1,n2,n4

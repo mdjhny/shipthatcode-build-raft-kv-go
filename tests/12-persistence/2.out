@@ -1,0 +1,2 @@
+state=follower term=5 voted_for=c1 log_len=2
+state=follower term=0 voted_for=none log_len=0

@@ -1,0 +1,58 @@
+{
+  "course": "build-raft-kv",
+  "language": "go",
+  "language_id": 60,
+  "entrypoint": "main.go",
+  "version": 1,
+  "content_hash": "27cf44525d92f938",
+  "lessons": [
+    {
+      "slug": "why-consensus",
+      "tests_hash": "84ed0518c68b"
+    },
+    {
+      "slug": "raft-overview",
+      "tests_hash": "8e289e46ab6c"
+    },
+    {
+      "slug": "leader-election",
+      "tests_hash": "1c94a5fddc69"
+    },
+    {
+      "slug": "election-safety",
+      "tests_hash": "6eb879c03634"
+    },
+    {
+      "slug": "log-replication",
+      "tests_hash": "78a3567769a7"
+    },
+    {
+      "slug": "log-consistency",
+      "tests_hash": "ee33265e39b3"
+    },
+    {
+      "slug": "figure-8",
+      "tests_hash": "82d09c9a5603"
+    },
+    {
+      "slug": "snapshots",
+      "tests_hash": "75f8e500389d"
+    },
+    {
+      "slug": "membership",
+      "tests_hash": "33f2491e7bcc"
+    },
+    {
+      "slug": "linearizability",
+      "tests_hash": "41879ed88c11"
+    },
+    {
+      "slug": "full-raft",
+      "tests_hash": "e7fbad640e26"
+    },
+    {
+      "slug": "persistence",
+      "tests_hash": "3c8c851151c9"
+    }
+  ]
+}
