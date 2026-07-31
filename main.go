@@ -57,14 +57,12 @@ func (n *Node) handleCmd(parts []string) {
 		n.votedFor = n.name
 	case CommandBecomeLeader:
 		if n.state != NodeStateCandidate {
-			fmt.Println("Cannot become leader: not in candidate state")
 			return
 		}
 		n.state = NodeStateLeader
 	case CommandBecomeFollower:
 		term, _ := strconv.ParseInt(parts[1], 10, 64)
 		if term < n.term {
-			fmt.Println("Cannot become follower: term is less than current term")
 			return
 		}
 		n.term = term
