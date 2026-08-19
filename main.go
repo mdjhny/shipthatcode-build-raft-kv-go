@@ -85,19 +85,29 @@ func (n *Node) handleCmd(parts []string) string {
 		n.ackIndex[n.name]++
 	case CommandAck:
 		followerID := parts[1]
-		n.ackIndex[followerID]++
-		if len(n.ackIndex) > n.numFollowers/2 {
-			n.commitedIndex++
+		n.ackIndex[followerID] = len(n.entries)
+		ackCount := 0
+		for _, ack := range n.ackIndex {
+			if ack > n.commitedIndex {
+				ackCount++
+			}
+		}
+		if ackCount > n.numFollowers/2 {
+			n.commitedIndex = len(n.entries)
 		}
 	case CommandLog:
 		nodeID := parts[1]
-		nodeIndex := n.ackIndex[nodeID]
+		nodeAckIndex := n.ackIndex[nodeID]
 		var sb strings.Builder
-		for i := 0; i < nodeIndex; i++ {
+		for i := 0; i < nodeAckIndex; i++ {
 			entry := n.entries[i]
 			sb.WriteString(fmt.Sprintf("%d:%d:%s\n", entry.index, entry.term, entry.command))
 		}
-		return strings.TrimSpace(sb.String())
+		s := strings.TrimSpace(sb.String())
+		if s == "" {
+			s = "(empty)"
+		}
+		return s
 	case CommandCommitIndex:
 		return strconv.Itoa(n.commitedIndex)
 	default:
