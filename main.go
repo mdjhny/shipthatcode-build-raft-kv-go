@@ -124,7 +124,7 @@ func (n *Node) handleCmd(parts []string) string {
 			return ""
 		}
 		n.peers = make([]string, 0, numNodes)
-		for i := range numNodes {
+		for i := 0; i < numNodes; i++ {
 			n.peers = append(n.peers, strconv.Itoa(i))
 		}
 		n.name = "1"
@@ -136,7 +136,6 @@ func (n *Node) handleCmd(parts []string) string {
 		} else {
 			n.state = NodeStateFollower
 		}
-		// n.term++
 		candidateStore = peer
 	case CommandVote:
 		voter := parts[1]
