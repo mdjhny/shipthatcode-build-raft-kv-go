@@ -125,11 +125,13 @@ func (n *Node) handleCmd(parts []string) string {
 		}
 		n.peers = make([]string, 0, numNodes)
 		for i := 0; i < numNodes; i++ {
-			n.peers = append(n.peers, strconv.Itoa(i))
+			nodeID := strconv.Itoa(i)
+			n.peers = append(n.peers, nodeID)
 		}
 		n.name = "1"
 	case CommandTimeout:
 		peer := parts[1]
+		n.votesReceived = make(map[string]map[string]bool)
 		if peer == n.name {
 			n.state = NodeStateCandidate
 			n.addVote(n.name, peer)
@@ -142,22 +144,14 @@ func (n *Node) handleCmd(parts []string) string {
 		candidate := parts[2]
 		if candidate == candidateStore {
 			n.addVote(voter, candidate)
-			if len(n.votesReceived[candidate]) > len(n.peers)/2 {
-				var state NodeState
-				if n.name == candidate {
-					state = NodeStateLeader
-				} else {
-					state = NodeStateFollower
-				}
-				n.state = state
-				n.votedFor = candidate
-			}
 		}
 	case CommandResult:
-		if n.votedFor == "" {
-			return "NO_LEADER"
+		for candidate, voters := range n.votesReceived {
+			if len(voters) > len(n.peers)/2 {
+				return fmt.Sprintf("node %s", candidate)
+			}
 		}
-		return fmt.Sprintf("node %s", n.votedFor)
+		return "NO_LEADER"
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
