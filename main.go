@@ -26,6 +26,10 @@ const (
 	CommandBecomeFollower  Command = "BECOME_FOLLOWER"
 	CommandState           Command = "STATE"
 	CommandRequestVote     Command = "REQUEST_VOTE"
+	CommandNodes           Command = "NODES"
+	CommandTimeout         Command = "TIMEOUT"
+	CommandVote            Command = "VOTE"
+	CommandResult          Command = "RESULT"
 )
 
 type Node struct {
@@ -35,17 +39,23 @@ type Node struct {
 	votedFor     string
 	lastLogIndex int64
 	lastLogTerm  int64
+
+	peers         []string
+	votesReceived map[string]map[string]bool
 }
 
 func newNode() *Node {
 	return &Node{
 		state:        NodeStateFollower,
 		term:         0,
-		votedFor:     "none",
+		votedFor:     "",
 		lastLogIndex: 0,
 		lastLogTerm:  0,
+		peers:        []string{},
 	}
 }
+
+var candidateStore string
 
 func (n *Node) handleCmd(parts []string) string {
 	cmd := Command(parts[0])
@@ -54,7 +64,7 @@ func (n *Node) handleCmd(parts []string) string {
 		n.name = parts[1]
 		n.state = NodeStateFollower
 		n.term = 0
-		n.votedFor = "none"
+		n.votedFor = ""
 	case CommandStatus:
 		return fmt.Sprintf("state=%s term=%d voted_for=%s", n.state, n.term, n.votedFor)
 	case CommandBecomeCandidate:
@@ -73,7 +83,7 @@ func (n *Node) handleCmd(parts []string) string {
 		}
 		n.term = term
 		n.state = NodeStateFollower
-		n.votedFor = "none"
+		n.votedFor = ""
 	case CommandState:
 		if len(parts) < 5 {
 			return ""
@@ -92,7 +102,7 @@ func (n *Node) handleCmd(parts []string) string {
 		if candidateTerm < n.term {
 			return "NO"
 		}
-		if candidateTerm == n.term && n.votedFor != "none" && n.votedFor != candidateID {
+		if candidateTerm == n.term && n.votedFor != "" && n.votedFor != candidateID {
 			return "NO"
 		}
 		candidateLastLogIndex, _ := strconv.ParseInt(parts[3], 10, 64)
@@ -108,10 +118,61 @@ func (n *Node) handleCmd(parts []string) string {
 		n.lastLogTerm = candidateLastLogTerm
 		n.state = NodeStateFollower
 		return "YES"
+	case CommandNodes:
+		numNodes, err := strconv.Atoi(parts[1])
+		if err != nil || numNodes <= 0 {
+			return ""
+		}
+		n.peers = make([]string, 0, numNodes)
+		for i := range numNodes {
+			n.peers = append(n.peers, strconv.Itoa(i))
+		}
+		n.name = "1"
+	case CommandTimeout:
+		peer := parts[1]
+		if peer == n.name {
+			n.state = NodeStateCandidate
+			n.addVote(n.name, peer)
+		} else {
+			n.state = NodeStateFollower
+		}
+		// n.term++
+		candidateStore = peer
+	case CommandVote:
+		voter := parts[1]
+		candidate := parts[2]
+		if candidate == candidateStore {
+			n.addVote(voter, candidate)
+			if len(n.votesReceived[candidate]) > len(n.peers)/2 {
+				var state NodeState
+				if n.name == candidate {
+					state = NodeStateLeader
+				} else {
+					state = NodeStateFollower
+				}
+				n.state = state
+				n.votedFor = candidate
+			}
+		}
+	case CommandResult:
+		if n.votedFor == "" {
+			return "NO_LEADER"
+		}
+		return fmt.Sprintf("node %s", n.votedFor)
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
 	return ""
+}
+
+func (n *Node) addVote(voter, candidate string) {
+	if n.votesReceived == nil {
+		n.votesReceived = make(map[string]map[string]bool)
+	}
+	if n.votesReceived[candidate] == nil {
+		n.votesReceived[candidate] = make(map[string]bool)
+	}
+	n.votesReceived[candidate][voter] = true
 }
 
 func main() {
@@ -130,5 +191,8 @@ func main() {
 		if result != "" {
 			fmt.Fprintln(out, result)
 		}
+	}
+	if err := sc.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "Error reading input:", err)
 	}
 }
