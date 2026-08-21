@@ -27,17 +27,21 @@ const (
 	CommandSnapshotInfo Command = "SNAPSHOT_INFO"
 )
 
+type LogEntry struct {
+	command string
+	term    int
+}
+
 type Node struct {
+	lastTerm        int
 	term            int // 当前 term
 	lastCommitIndex int
 	commitIndex     int
-	logs            map[int][]string // term -> logs
+	logs            []LogEntry // term -> logs
 }
 
 func newNode() *Node {
-	return &Node{
-		logs: make(map[int][]string),
-	}
+	return &Node{}
 }
 
 func (n *Node) handleCmd(parts []string) string {
@@ -48,16 +52,12 @@ func (n *Node) handleCmd(parts []string) string {
 			return ""
 		}
 		term, _ := strconv.Atoi(parts[1])
-		switch {
-		case term < n.term:
+		if term < n.term {
 			return ""
-		case term > n.term:
-			n.logs[term] = n.logs[n.term]
-			delete(n.logs, n.term)
-			n.term = term
 		}
 		conmmand := strings.Join(parts[2:], " ")
-		n.logs[term] = append(n.logs[term], conmmand)
+		n.logs = append(n.logs, LogEntry{term: term, command: conmmand})
+		n.term = term
 	case ComandCommitIndex:
 		if len(parts) < 2 {
 			return ""
@@ -68,15 +68,16 @@ func (n *Node) handleCmd(parts []string) string {
 		}
 		n.commitIndex = index
 	case CommandSnapshot:
-		n.logs[n.term] = n.logs[n.term][n.commitIndex-n.lastCommitIndex:]
+		n.lastTerm = n.logs[n.commitIndex-n.lastCommitIndex-1].term
+		n.logs = n.logs[n.commitIndex-n.lastCommitIndex:]
 		n.lastCommitIndex = n.commitIndex
 	case CommandLogLen:
-		return strconv.Itoa(len(n.logs[n.term]))
+		return strconv.Itoa(len(n.logs))
 	case CommandSnapshotInfo:
 		if n.lastCommitIndex <= 0 {
 			return "none"
 		}
-		return fmt.Sprintf("last_idx=%d last_term=%d", n.lastCommitIndex, n.term)
+		return fmt.Sprintf("last_idx=%d last_term=%d", n.lastCommitIndex, n.lastTerm)
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
