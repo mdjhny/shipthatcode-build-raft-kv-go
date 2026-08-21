@@ -117,7 +117,7 @@ func (n *Node) handleCmd(parts []string) string {
 
 var debugLogger = bufio.NewWriter(os.Stderr)
 
-func debug(format string, a ...any) {
+func debug(format string, a ...interface{}) {
 	defer debugLogger.Flush()
 	fmt.Fprintf(debugLogger, format, a...)
 	fmt.Fprintln(debugLogger)
