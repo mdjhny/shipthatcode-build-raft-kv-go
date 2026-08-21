@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type NodeState string
@@ -27,9 +28,10 @@ const (
 )
 
 type Node struct {
-	term        int // 当前 term
-	commitIndex int
-	logs        map[int][]string // term -> logs
+	term            int // 当前 term
+	lastCommitIndex int
+	commitIndex     int
+	logs            map[int][]string // term -> logs
 }
 
 func newNode() *Node {
@@ -46,10 +48,14 @@ func (n *Node) handleCmd(parts []string) string {
 			return ""
 		}
 		term, _ := strconv.Atoi(parts[1])
-		if term < n.term {
+		switch {
+		case term < n.term:
 			return ""
+		case term > n.term:
+			n.logs[term] = n.logs[n.term]
+			delete(n.logs, n.term)
+			n.term = term
 		}
-		n.term = term
 		conmmand := strings.Join(parts[2:], " ")
 		n.logs[term] = append(n.logs[term], conmmand)
 	case ComandCommitIndex:
@@ -57,23 +63,37 @@ func (n *Node) handleCmd(parts []string) string {
 			return ""
 		}
 		index, _ := strconv.Atoi(parts[1])
-		if index < 0 {
+		if index < n.commitIndex {
 			return ""
 		}
 		n.commitIndex = index
 	case CommandSnapshot:
-		n.logs[n.term] = n.logs[n.term][n.commitIndex:]
+		n.logs[n.term] = n.logs[n.term][n.commitIndex-n.lastCommitIndex:]
+		n.lastCommitIndex = n.commitIndex
 	case CommandLogLen:
 		return strconv.Itoa(len(n.logs[n.term]))
 	case CommandSnapshotInfo:
-		if n.commitIndex <= 0 {
+		if n.lastCommitIndex <= 0 {
 			return "none"
 		}
-		return fmt.Sprintf("last_idx=%d last_term=%d", n.commitIndex, n.term)
+		return fmt.Sprintf("last_idx=%d last_term=%d", n.lastCommitIndex, n.term)
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
 	return ""
+}
+
+var debugger = sync.OnceValue(func() *os.File {
+	f, err := os.Create("debug.log")
+	if err != nil {
+		panic(err)
+	}
+	return f
+})
+
+func debug(format string, a ...interface{}) {
+	fmt.Fprintf(debugger(), format, a...)
+	fmt.Fprintln(debugger())
 }
 
 func main() {
@@ -92,6 +112,7 @@ func main() {
 		if result != "" {
 			fmt.Fprintln(out, result)
 		}
+		debug("line: %s, node=%+v, result=%s", line, *node, result)
 	}
 	if err := sc.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error reading input:", err)
