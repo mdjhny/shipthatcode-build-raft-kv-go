@@ -83,17 +83,22 @@ func (n *Node) handleCmd(parts []string) string {
 	return ""
 }
 
-var debugger = sync.OnceValue(func() *os.File {
-	f, err := os.Create("debug.log")
-	if err != nil {
-		panic(err)
-	}
-	return f
-})
+var debuggerOnce sync.Once
+var debugger *os.File
+
+func init() {
+	debuggerOnce.Do(func() {
+		f, err := os.Create("debug.log")
+		if err != nil {
+			panic(err)
+		}
+		debugger = f
+	})
+}
 
 func debug(format string, a ...interface{}) {
-	fmt.Fprintf(debugger(), format, a...)
-	fmt.Fprintln(debugger())
+	fmt.Fprintf(debugger, format, a...)
+	fmt.Fprintln(debugger)
 }
 
 func main() {
