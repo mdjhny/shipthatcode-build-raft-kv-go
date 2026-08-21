@@ -30,10 +30,13 @@ const (
 	// CommandTimeout         Command = "TIMEOUT"
 	// CommandVote            Command = "VOTE"
 	// CommandResult          Command = "RESULT"
-	CommandClient      Command = "CLIENT"
-	CommandAck         Command = "ACK"
-	CommandLog         Command = "LOG"
-	CommandCommitIndex Command = "COMMIT_INDEX"
+	// CommandClient      Command = "CLIENT"
+	// CommandAck         Command = "ACK"
+	// CommandLog         Command = "LOG"
+	// CommandCommitIndex Command = "COMMIT_INDEX"
+	CommandLeaderLog   Command = "LEADER_LOG"
+	CommandFollowerLog Command = "FOLLOWER_LOG"
+	ComandReconcile    Command = "RECONCILE"
 )
 
 type LogEntry struct {
@@ -48,15 +51,12 @@ type Node struct {
 	term         int
 	numFollowers int
 
-	ackIndex      map[string]int
-	entries       []LogEntry
-	commitedIndex int
+	logs string
 }
 
 func newNode() *Node {
 	return &Node{
-		state:    NodeStateFollower,
-		ackIndex: make(map[string]int),
+		state: NodeStateFollower,
 	}
 }
 
@@ -72,44 +72,15 @@ func (n *Node) handleCmd(parts []string) string {
 		n.term = 1
 		n.state = NodeStateLeader
 		n.numFollowers = numFollowers
-	case CommandClient:
-		if n.state != NodeStateLeader {
+	case CommandLeaderLog:
+		if len(parts) < 2 {
 			return ""
 		}
-		command := strings.Join(parts[1:], " ")
-		n.entries = append(n.entries, LogEntry{
-			index:   len(n.entries) + 1,
-			term:    n.term,
-			command: command,
-		})
-		n.ackIndex[n.name]++
-	case CommandAck:
-		followerID := parts[1]
-		n.ackIndex[followerID] = len(n.entries)
-		ackCount := 0
-		for _, ack := range n.ackIndex {
-			if ack > n.commitedIndex {
-				ackCount++
-			}
-		}
-		if ackCount > n.numFollowers/2 {
-			n.commitedIndex = len(n.entries)
-		}
-	case CommandLog:
-		nodeID := parts[1]
-		nodeAckIndex := n.ackIndex[nodeID]
-		var sb strings.Builder
-		for i := 0; i < nodeAckIndex; i++ {
-			entry := n.entries[i]
-			sb.WriteString(fmt.Sprintf("%d:%d:%s\n", entry.index, entry.term, entry.command))
-		}
-		s := strings.TrimSpace(sb.String())
-		if s == "" {
-			s = "(empty)"
-		}
-		return s
-	case CommandCommitIndex:
-		return strconv.Itoa(n.commitedIndex)
+		n.logs = parts[1]
+	case CommandFollowerLog:
+		// do nothing
+	case ComandReconcile:
+		return n.logs
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
