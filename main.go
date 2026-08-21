@@ -19,72 +19,108 @@ const (
 type Command string
 
 const (
-	CommandInit Command = "INIT"
-	// CommandStatus          Command = "STATUS"
-	// CommandBecomeCandidate Command = "BECOME_CANDIDATE"
-	// CommandBecomeLeader    Command = "BECOME_LEADER"
-	// CommandBecomeFollower  Command = "BECOME_FOLLOWER"
-	// CommandState           Command = "STATE"
-	// CommandRequestVote     Command = "REQUEST_VOTE"
-	// CommandNodes           Command = "NODES"
-	// CommandTimeout         Command = "TIMEOUT"
-	// CommandVote            Command = "VOTE"
-	// CommandResult          Command = "RESULT"
-	// CommandClient      Command = "CLIENT"
-	// CommandAck         Command = "ACK"
-	// CommandLog         Command = "LOG"
-	// CommandCommitIndex Command = "COMMIT_INDEX"
-	CommandLeaderLog   Command = "LEADER_LOG"
-	CommandFollowerLog Command = "FOLLOWER_LOG"
-	ComandReconcile    Command = "RECONCILE"
+	// CommandInit   Command = "INIT"
+	CommandLog    Command = "LOG"
+	CommandLeader Command = "LEADER"
+	ComandCommit  Command = "COMMIT"
 )
 
-type LogEntry struct {
-	index   int
-	term    int
-	command string
-}
+// type LogEntry struct {
+// 	index   int
+// 	term    int
+// 	command string
+// }
 
 type Node struct {
-	name         string
-	state        NodeState
-	term         int
-	numFollowers int
+	// name         string
+	// state NodeState
+	// term  int
 
-	logs string
+	leader     string
+	leaderTerm int
+	terms      map[string][]int
 }
 
 func newNode() *Node {
 	return &Node{
-		state: NodeStateFollower,
+		// state: NodeStateFollower,
+		terms: make(map[string][]int),
 	}
 }
 
 func (n *Node) handleCmd(parts []string) string {
 	cmd := Command(parts[0])
 	switch cmd {
-	case CommandInit:
-		numFollowers, err := strconv.Atoi(parts[1])
-		if err != nil || numFollowers < 0 {
+	// case CommandInit:
+	// numFollowers, err := strconv.Atoi(parts[1])
+	// if err != nil || numFollowers < 0 {
+	// 	return ""
+	// }
+	// n.term = 1
+	// n.state = NodeStateLeader
+	case CommandLog:
+		if len(parts) < 3 {
 			return ""
 		}
-		n.name = "0"
-		n.term = 1
-		n.state = NodeStateLeader
-		n.numFollowers = numFollowers
-	case CommandLeaderLog:
-		if len(parts) < 2 {
+		node := parts[1]
+		terms := make([]int, 0, len(parts)-2)
+		for _, term := range parts[2:] {
+			t, _ := strconv.Atoi(term)
+			terms = append(terms, t)
+		}
+		n.terms[node] = terms
+	case CommandLeader:
+		if len(parts) < 3 {
 			return ""
 		}
-		n.logs = parts[1]
-	case CommandFollowerLog:
-		// do nothing
-	case ComandReconcile:
-		return n.logs
+		term, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return ""
+		}
+		n.leader = parts[1]
+		n.leaderTerm = term
+	case ComandCommit:
+		if len(parts) < 3 {
+			return ""
+		}
+		index, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return ""
+		}
+		term, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return ""
+		}
+		// check majority
+		num := 0
+		for _, terms := range n.terms {
+			if len(terms) >= index && terms[index-1] == term {
+				num++
+			}
+		}
+		debug("n.terms: %+v, num: %d", n.terms, num)
+
+		if num < (len(n.terms)+1)/2 {
+			return "NO"
+		}
+
+		// check term
+		if term != n.leaderTerm {
+			return "NO"
+		}
+		return "YES"
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
 	return ""
+}
+
+var debugLogger = bufio.NewWriter(os.Stderr)
+
+func debug(format string, a ...any) {
+	defer debugLogger.Flush()
+	fmt.Fprintf(debugLogger, format, a...)
+	fmt.Fprintln(debugLogger)
 }
 
 func main() {
