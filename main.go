@@ -68,6 +68,9 @@ func (n *Node) handleCmd(parts []string) string {
 		}
 		n.commitIndex = index
 	case CommandSnapshot:
+		if n.commitIndex <= 0 {
+			return ""
+		}
 		n.lastTerm = n.logs[n.commitIndex-n.lastCommitIndex-1].term
 		n.logs = n.logs[n.commitIndex-n.lastCommitIndex:]
 		n.lastCommitIndex = n.commitIndex
