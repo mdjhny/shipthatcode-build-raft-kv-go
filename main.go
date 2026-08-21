@@ -98,7 +98,6 @@ func (n *Node) handleCmd(parts []string) string {
 				num++
 			}
 		}
-		debug("n.terms: %+v, num: %d", n.terms, num)
 
 		if num < (len(n.terms)+1)/2 {
 			return "NO"
@@ -113,14 +112,6 @@ func (n *Node) handleCmd(parts []string) string {
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
 	return ""
-}
-
-var debugLogger = bufio.NewWriter(os.Stderr)
-
-func debug(format string, a ...interface{}) {
-	defer debugLogger.Flush()
-	fmt.Fprintf(debugLogger, format, a...)
-	fmt.Fprintln(debugLogger)
 }
 
 func main() {
