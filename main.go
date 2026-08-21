@@ -19,95 +19,57 @@ const (
 type Command string
 
 const (
-	// CommandInit   Command = "INIT"
-	CommandLog    Command = "LOG"
-	CommandLeader Command = "LEADER"
-	ComandCommit  Command = "COMMIT"
+	CommandAppend       Command = "APPEND"
+	ComandCommitIndex   Command = "COMMIT_INDEX"
+	CommandSnapshot     Command = "SNAPSHOT"
+	CommandLogLen       Command = "LOG_LEN"
+	CommandSnapshotInfo Command = "SNAPSHOT_INFO"
 )
 
-// type LogEntry struct {
-// 	index   int
-// 	term    int
-// 	command string
-// }
-
 type Node struct {
-	// name         string
-	// state NodeState
-	// term  int
-
-	leader     string
-	leaderTerm int
-	terms      map[string][]int
+	term        int // 当前 term
+	commitIndex int
+	logs        map[int][]string // term -> logs
 }
 
 func newNode() *Node {
 	return &Node{
-		// state: NodeStateFollower,
-		terms: make(map[string][]int),
+		logs: make(map[int][]string),
 	}
 }
 
 func (n *Node) handleCmd(parts []string) string {
 	cmd := Command(parts[0])
 	switch cmd {
-	// case CommandInit:
-	// numFollowers, err := strconv.Atoi(parts[1])
-	// if err != nil || numFollowers < 0 {
-	// 	return ""
-	// }
-	// n.term = 1
-	// n.state = NodeStateLeader
-	case CommandLog:
+	case CommandAppend:
 		if len(parts) < 3 {
 			return ""
 		}
-		node := parts[1]
-		terms := make([]int, 0, len(parts)-2)
-		for _, term := range parts[2:] {
-			t, _ := strconv.Atoi(term)
-			terms = append(terms, t)
-		}
-		n.terms[node] = terms
-	case CommandLeader:
-		if len(parts) < 3 {
+		term, _ := strconv.Atoi(parts[1])
+		if term < n.term {
 			return ""
 		}
-		term, err := strconv.Atoi(parts[2])
-		if err != nil {
+		n.term = term
+		conmmand := strings.Join(parts[2:], " ")
+		n.logs[term] = append(n.logs[term], conmmand)
+	case ComandCommitIndex:
+		if len(parts) < 2 {
 			return ""
 		}
-		n.leader = parts[1]
-		n.leaderTerm = term
-	case ComandCommit:
-		if len(parts) < 3 {
+		index, _ := strconv.Atoi(parts[1])
+		if index < 0 {
 			return ""
 		}
-		index, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return ""
+		n.commitIndex = index
+	case CommandSnapshot:
+		n.logs[n.term] = n.logs[n.term][n.commitIndex:]
+	case CommandLogLen:
+		return strconv.Itoa(len(n.logs[n.term]))
+	case CommandSnapshotInfo:
+		if n.commitIndex <= 0 {
+			return "none"
 		}
-		term, err := strconv.Atoi(parts[2])
-		if err != nil {
-			return ""
-		}
-		// check majority
-		num := 0
-		for _, terms := range n.terms {
-			if len(terms) >= index && terms[index-1] == term {
-				num++
-			}
-		}
-
-		if num < (len(n.terms)+1)/2 {
-			return "NO"
-		}
-
-		// check term
-		if term != n.leaderTerm {
-			return "NO"
-		}
-		return "YES"
+		return fmt.Sprintf("last_idx=%d last_term=%d", n.commitIndex, n.term)
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
