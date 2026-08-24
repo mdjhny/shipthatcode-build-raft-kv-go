@@ -3,11 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 	"sync"
-
-	mapset "github.com/deckarep/golang-set/v2"
 )
 
 type NodeState string
@@ -30,17 +29,63 @@ const (
 )
 
 type Node struct {
-	nodesNew mapset.Set[string]
-	nodesOld mapset.Set[string]
-	nodesAll mapset.Set[string]
+	nodesNew Set
+	nodesOld Set
+	nodesAll Set
 	isJoint  bool
+}
+
+type Set map[string]bool
+
+func NewSet(vals ...string) Set {
+	m := make(map[string]bool, len(vals))
+	for _, val := range vals {
+		m[val] = true
+	}
+	return m
+}
+
+func (s Set) Add(v string) {
+	s[v] = true
+}
+
+func (s Set) Remove(v string) {
+	delete(s, v)
+}
+
+func (s Set) Clone() Set {
+	return maps.Clone(s)
+}
+
+func (s Set) Union(a Set) Set {
+	t := s.Clone()
+	maps.Copy(t, a)
+	return t
+}
+
+func (s Set) Intersect(a Set) Set {
+	t := s.Clone()
+	for k := range s {
+		if _, ok := a[k]; ok {
+			t[k] = true
+		}
+	}
+	return t
+}
+
+func (s Set) Clear() {
+	clear(s)
+}
+
+func (s Set) Cardinality() int {
+	return len(s)
 }
 
 func newNode() *Node {
 	return &Node{
-		nodesNew: mapset.NewThreadUnsafeSet[string](),
-		nodesOld: mapset.NewThreadUnsafeSet[string](),
-		nodesAll: mapset.NewThreadUnsafeSet[string](),
+		nodesNew: NewSet(),
+		nodesOld: NewSet(),
+		nodesAll: NewSet(),
 		isJoint:  false,
 	}
 }
@@ -56,7 +101,7 @@ func (n *Node) handleCmd(parts []string) string {
 		if len(nodes) == 0 {
 			return ""
 		}
-		n.nodesNew = mapset.NewThreadUnsafeSet(nodes...)
+		n.nodesNew = NewSet(nodes...)
 	case CommandAdd:
 		if len(parts) < 2 {
 			return ""
@@ -85,7 +130,7 @@ func (n *Node) handleCmd(parts []string) string {
 			return ""
 		}
 		nodes := strings.Split(parts[1], ",")
-		s := mapset.NewThreadUnsafeSet(nodes...)
+		s := NewSet(nodes...)
 		newMajority := s.Intersect(n.nodesNew).Cardinality() > n.nodesNew.Cardinality()/2
 		oldMajority := s.Intersect(n.nodesOld).Cardinality() > n.nodesOld.Cardinality()/2
 		majority := "NO"
@@ -103,17 +148,6 @@ func (n *Node) handleCmd(parts []string) string {
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
 	return ""
-}
-
-func removeNode(nodes []string, needle string) []string {
-	n := 0
-	for _, node := range nodes {
-		if node != needle {
-			nodes[n] = node
-			n++
-		}
-	}
-	return nodes[:n]
 }
 
 var debuggerOnce sync.Once
@@ -150,7 +184,6 @@ func main() {
 		if result != "" {
 			fmt.Fprintln(out, result)
 		}
-		debug("line: %s, node=%+v, result=%s", line, *node, result)
 	}
 	if err := sc.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error reading input:", err)
