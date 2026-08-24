@@ -82,7 +82,7 @@ func (s Set) Intersect(a Set) Set {
 }
 
 func (s Set) Clear() {
-	clear(s)
+	s = make(Set, 0)
 }
 
 func (s Set) Cardinality() int {
