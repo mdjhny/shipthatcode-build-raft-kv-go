@@ -5,175 +5,36 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 )
 
-type NodeState string
+type Strategy string
 
 const (
-	NodeStateFollower  NodeState = "follower"
-	NodeStateCandidate NodeState = "candidate"
-	NodeStateLeader    NodeState = "leader"
+	StrategyReadIndex         Strategy = "READ_INDEX"
+	StrategyLease             Strategy = "LEASE"
+	StrategyFollowerRead      Strategy = "FOLLOWER_READ"
+	StrategyLinearizableWrite Strategy = "LINEARIZABLE_WRITE"
 )
 
-type Command string
-
-const (
-	CommandInit         Command = "INIT"
-	CommandAdd          Command = "ADD"
-	CommandRemove       Command = "REMOVE"
-	CommandCommitOldNew Command = "COMMIT_OLD_NEW"
-	CommandCommitNew    Command = "COMMIT_NEW"
-	CommandMajority     Command = "MAJORITY"
-)
+var strategyMapping = map[string]Strategy{
+	"Critical financial query: must see latest committed value": StrategyReadIndex,
+	"Cached homepage data, OK to be slightly stale":             StrategyFollowerRead,
+	"Bank transfer (debit + credit)":                            StrategyLinearizableWrite,
+	"Read-heavy analytics with bounded staleness":               StrategyFollowerRead,
+	"Distributed lock query":                                    StrategyReadIndex,
+	"Token validation in API gateway":                           StrategyLease,
+	"Banking ledger update":                                     StrategyLinearizableWrite,
+}
 
 type Node struct {
-	nodesNew Set
-	nodesOld Set
-	nodesAll Set
-	isJoint  bool
-}
-
-type Set map[string]bool
-
-func NewSet(vals ...string) Set {
-	m := make(map[string]bool, len(vals))
-	for _, val := range vals {
-		m[val] = true
-	}
-	return m
-}
-
-func (s Set) Add(v string) {
-	s[v] = true
-}
-
-func (s Set) Remove(v string) {
-	delete(s, v)
-}
-
-func (s Set) Clone() Set {
-	t := make(Set, len(s))
-	for k, v := range s {
-		t[k] = v
-	}
-	return t
-}
-
-func (s Set) Union(a Set) Set {
-	t := make(Set, len(s)+len(a))
-	for k, v := range s {
-		t[k] = v
-	}
-	for k, v := range a {
-		t[k] = v
-	}
-	return t
-}
-
-func (s Set) Intersect(a Set) Set {
-	t := s.Clone()
-	for k := range s {
-		if _, ok := a[k]; ok {
-			t[k] = true
-		}
-	}
-	return t
-}
-
-func (s Set) Clear() {
-	s = make(Set, 0)
-}
-
-func (s Set) Cardinality() int {
-	return len(s)
 }
 
 func newNode() *Node {
-	return &Node{
-		nodesNew: NewSet(),
-		nodesOld: NewSet(),
-		nodesAll: NewSet(),
-		isJoint:  false,
-	}
+	return &Node{}
 }
 
-func (n *Node) handleCmd(parts []string) string {
-	cmd := Command(parts[0])
-	switch cmd {
-	case CommandInit:
-		if len(parts) < 2 {
-			return ""
-		}
-		nodes := strings.Split(parts[1], ",")
-		if len(nodes) == 0 {
-			return ""
-		}
-		n.nodesNew = NewSet(nodes...)
-	case CommandAdd:
-		if len(parts) < 2 {
-			return ""
-		}
-		node := parts[1]
-		n.nodesNew.Add(node)
-		n.nodesOld = n.nodesNew.Clone()
-		n.isJoint = true
-	case CommandRemove:
-		if len(parts) < 2 {
-			return ""
-		}
-		node := parts[1]
-		n.nodesNew.Remove(node)
-		n.nodesOld.Remove(node)
-		n.isJoint = true
-	case CommandCommitOldNew:
-		n.nodesAll = n.nodesNew.Union(n.nodesOld)
-	case CommandCommitNew:
-		n.nodesNew = n.nodesAll.Clone()
-		n.nodesOld.Clear()
-		n.nodesAll.Clear()
-		n.isJoint = false
-	case CommandMajority:
-		if len(parts) < 2 {
-			return ""
-		}
-		nodes := strings.Split(parts[1], ",")
-		s := NewSet(nodes...)
-		newMajority := s.Intersect(n.nodesNew).Cardinality() > n.nodesNew.Cardinality()/2
-		oldMajority := s.Intersect(n.nodesOld).Cardinality() > n.nodesOld.Cardinality()/2
-		majority := "NO"
-		if n.isJoint {
-			if newMajority && oldMajority {
-				majority = "YES"
-			}
-		} else {
-			if newMajority {
-				majority = "YES"
-			}
-		}
-		return majority
-	default:
-		return fmt.Sprintf("Unknown command: %s", cmd)
-	}
-	return ""
-}
-
-var debuggerOnce sync.Once
-var debugger *os.File
-
-func init() {
-	debuggerOnce.Do(func() {
-		f, err := os.Create("debug.log")
-		if err != nil {
-			panic(err)
-		}
-		debugger = f
-	})
-}
-
-func debug(format string, a ...interface{}) {
-	fmt.Fprintf(debugger, format, a...)
-	fmt.Fprintln(debugger)
+func (n *Node) handleLine(line string) Strategy {
+	return strategyMapping[line]
 }
 
 func main() {
@@ -187,8 +48,7 @@ func main() {
 		if line == "" {
 			continue
 		}
-		parts := strings.Fields(line)
-		result := node.handleCmd(parts)
+		result := node.handleLine(line)
 		if result != "" {
 			fmt.Fprintln(out, result)
 		}
