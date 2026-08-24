@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
+
+	mapset "github.com/deckarep/golang-set/v2"
 )
 
 type NodeState string
@@ -20,71 +21,99 @@ const (
 type Command string
 
 const (
-	CommandAppend       Command = "APPEND"
-	ComandCommitIndex   Command = "COMMIT_INDEX"
-	CommandSnapshot     Command = "SNAPSHOT"
-	CommandLogLen       Command = "LOG_LEN"
-	CommandSnapshotInfo Command = "SNAPSHOT_INFO"
+	CommandInit         Command = "INIT"
+	CommandAdd          Command = "ADD"
+	CommandRemove       Command = "REMOVE"
+	CommandCommitOldNew Command = "COMMIT_OLD_NEW"
+	CommandCommitNew    Command = "COMMIT_NEW"
+	CommandMajority     Command = "MAJORITY"
 )
 
-type LogEntry struct {
-	command string
-	term    int
-}
-
 type Node struct {
-	lastTerm        int
-	term            int // 当前 term
-	lastCommitIndex int
-	commitIndex     int
-	logs            []LogEntry // term -> logs
+	nodesNew mapset.Set[string]
+	nodesOld mapset.Set[string]
+	nodesAll mapset.Set[string]
+	isJoint  bool
 }
 
 func newNode() *Node {
-	return &Node{}
+	return &Node{
+		nodesNew: mapset.NewThreadUnsafeSet[string](),
+		nodesOld: mapset.NewThreadUnsafeSet[string](),
+		nodesAll: mapset.NewThreadUnsafeSet[string](),
+		isJoint:  false,
+	}
 }
 
 func (n *Node) handleCmd(parts []string) string {
 	cmd := Command(parts[0])
 	switch cmd {
-	case CommandAppend:
-		if len(parts) < 3 {
-			return ""
-		}
-		term, _ := strconv.Atoi(parts[1])
-		if term < n.term {
-			return ""
-		}
-		conmmand := strings.Join(parts[2:], " ")
-		n.logs = append(n.logs, LogEntry{term: term, command: conmmand})
-		n.term = term
-	case ComandCommitIndex:
+	case CommandInit:
 		if len(parts) < 2 {
 			return ""
 		}
-		index, _ := strconv.Atoi(parts[1])
-		if index < n.commitIndex {
+		nodes := strings.Split(parts[1], ",")
+		if len(nodes) == 0 {
 			return ""
 		}
-		n.commitIndex = index
-	case CommandSnapshot:
-		if n.commitIndex <= 0 {
+		n.nodesNew = mapset.NewThreadUnsafeSet(nodes...)
+	case CommandAdd:
+		if len(parts) < 2 {
 			return ""
 		}
-		n.lastTerm = n.logs[n.commitIndex-n.lastCommitIndex-1].term
-		n.logs = n.logs[n.commitIndex-n.lastCommitIndex:]
-		n.lastCommitIndex = n.commitIndex
-	case CommandLogLen:
-		return strconv.Itoa(len(n.logs))
-	case CommandSnapshotInfo:
-		if n.lastCommitIndex <= 0 {
-			return "none"
+		node := parts[1]
+		n.nodesNew.Add(node)
+		n.nodesOld = n.nodesNew.Clone()
+		n.isJoint = true
+	case CommandRemove:
+		if len(parts) < 2 {
+			return ""
 		}
-		return fmt.Sprintf("last_idx=%d last_term=%d", n.lastCommitIndex, n.lastTerm)
+		node := parts[1]
+		n.nodesNew.Remove(node)
+		n.nodesOld.Remove(node)
+		n.isJoint = true
+	case CommandCommitOldNew:
+		n.nodesAll = n.nodesNew.Union(n.nodesOld)
+	case CommandCommitNew:
+		n.nodesNew = n.nodesAll.Clone()
+		n.nodesOld.Clear()
+		n.nodesAll.Clear()
+		n.isJoint = false
+	case CommandMajority:
+		if len(parts) < 2 {
+			return ""
+		}
+		nodes := strings.Split(parts[1], ",")
+		s := mapset.NewThreadUnsafeSet(nodes...)
+		newMajority := s.Intersect(n.nodesNew).Cardinality() > n.nodesNew.Cardinality()/2
+		oldMajority := s.Intersect(n.nodesOld).Cardinality() > n.nodesOld.Cardinality()/2
+		majority := "NO"
+		if n.isJoint {
+			if newMajority && oldMajority {
+				majority = "YES"
+			}
+		} else {
+			if newMajority {
+				majority = "YES"
+			}
+		}
+		return majority
 	default:
 		return fmt.Sprintf("Unknown command: %s", cmd)
 	}
 	return ""
+}
+
+func removeNode(nodes []string, needle string) []string {
+	n := 0
+	for _, node := range nodes {
+		if node != needle {
+			nodes[n] = node
+			n++
+		}
+	}
+	return nodes[:n]
 }
 
 var debuggerOnce sync.Once
