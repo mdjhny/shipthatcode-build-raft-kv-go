@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"maps"
 	"os"
 	"strings"
 	"sync"
@@ -54,12 +53,21 @@ func (s Set) Remove(v string) {
 }
 
 func (s Set) Clone() Set {
-	return maps.Clone(s)
+	t := make(Set, len(s))
+	for k, v := range s {
+		t[k] = v
+	}
+	return t
 }
 
 func (s Set) Union(a Set) Set {
-	t := s.Clone()
-	maps.Copy(t, a)
+	t := make(Set, len(s)+len(a))
+	for k, v := range s {
+		t[k] = v
+	}
+	for k, v := range a {
+		t[k] = v
+	}
 	return t
 }
 
