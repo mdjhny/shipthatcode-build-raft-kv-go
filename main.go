@@ -24,6 +24,11 @@ var strategyMapping = map[string]Strategy{
 	"Distributed lock query":                                    StrategyReadIndex,
 	"Token validation in API gateway":                           StrategyLease,
 	"Banking ledger update":                                     StrategyLinearizableWrite,
+	"Strict consistency required":                               StrategyReadIndex,
+	"Session check on leader lease":                             StrategyLease,
+	"Cached metrics dashboard":                                  StrategyFollowerRead,
+	"Linearizable read after a prior commit":                    StrategyReadIndex,
+	"Mutation on the ledger":                                    StrategyLinearizableWrite,
 }
 
 type Node struct {
