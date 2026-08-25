@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type NodeState string
@@ -26,133 +27,70 @@ type NodeInfo struct {
 type Command string
 
 const (
-	CommandInit    Command = "INIT"
-	CommandTimeout Command = "TIMEOUT"
-	CommandCrash   Command = "CRASH"
-	CommandRecover Command = "RECOVER"
-	CommandWrite   Command = "WRITE"
-	CommandRead    Command = "READ"
-	CommandState   Command = "STATE"
+	CommandPersistTerm Command = "PERSIST_TERM"
+	CommandPersistVote Command = "PERSIST_VOTE"
+	CommandAppend      Command = "APPEND"
+	CommandCrash       Command = "CRASH"
+	CommandRecover     Command = "RECOVER"
+	CommandStatus      Command = "STATUS"
 )
 
-type KV struct {
-	keys []string
-	m    map[string]string
-}
-
-func (k *KV) String() string {
-	if len(k.m) == 0 {
-		return "-"
-	}
-	parts := make([]string, 0, len(k.keys))
-	for _, key := range k.keys {
-		parts = append(parts, fmt.Sprintf("%s=%v", key, k.m[key]))
-	}
-
-	return strings.Join(parts, ",")
-}
-
-func (k *KV) Set(key, val string) {
-	k.keys = append(k.keys, key)
-	k.m[key] = val
-}
-
-func (k *KV) Get(key string) string {
-	v, ok := k.m[key]
-	if !ok {
-		return "NIL"
-	}
-	return v
+type LogEntry struct {
+	term int
+	cmd  string
 }
 
 type Node struct {
-	nodes  map[string]NodeInfo
-	term   int
-	leader string
-	kv     *KV
+	state    NodeState
+	term     int
+	votedFor string
+	logs     []LogEntry
+}
+
+var nodeStore atomic.Value
+
+func (n Node) String() string {
+	votedFor := n.votedFor
+	if votedFor == "" {
+		votedFor = "none"
+	}
+	return fmt.Sprintf("state=%s term=%d voted_for=%s log_len=%d", n.state, n.term, votedFor, len(n.logs))
 }
 
 func newNode() *Node {
-	return &Node{}
+	return &Node{state: StateFollower}
 }
 
 func (n *Node) handleCmd(parts []string) string {
 	cmd := Command(parts[0])
 	switch cmd {
-	case CommandInit:
-		num, _ := strconv.Atoi(parts[1])
-		n.nodes = make(map[string]NodeInfo, num)
-		for i := 0; i < num; i++ {
-			n.nodes[strconv.Itoa(i+1)] = NodeInfo{state: StateFollower, healthy: true}
-		}
-		n.term = 0
-		n.kv = &KV{m: map[string]string{}}
-	case CommandTimeout:
-		node := parts[1]
-		n.term++
-		n.nodes[node] = NodeInfo{state: StateCandidate, healthy: false}
-		if n.isMajority() {
-			n.leader = node
-			n.nodes[node] = NodeInfo{state: StateLeader, healthy: true}
-		}
+	case CommandPersistTerm:
+		term, _ := strconv.Atoi(parts[1])
+		n.term = term
+	case CommandPersistVote:
+		votedFor := parts[1]
+		n.votedFor = votedFor
+	case CommandAppend:
+		term, _ := strconv.Atoi(parts[1])
+		cmd := parts[2]
+		n.logs = append(n.logs, LogEntry{term: term, cmd: cmd})
 	case CommandCrash:
-		node := parts[1]
-		if n.leader == node {
-			n.leader = ""
-		}
-		nn := n.nodes[node]
-		nn.offline = true
-		n.nodes[node] = nn
+		nodeStore.Store(*n)
+		n.term = 0
+		n.votedFor = ""
+		n.logs = nil
 	case CommandRecover:
-		node := parts[1]
-		n.nodes[node] = NodeInfo{state: StateFollower, healthy: true, offline: false}
-	case CommandWrite:
-		if n.leader == "" {
-			return "NO_LEADER"
-		}
-		if !n.hasQuorum() {
-			return "NO_QUORUM"
-		}
-		key, val := parts[1], parts[2]
-		n.kv.Set(key, val)
-		return "OK"
-	case CommandRead:
-		if n.leader == "" {
-			return "NO_LEADER"
-		}
-		if !n.hasQuorum() {
-			return "NO_QUORUM"
-		}
-		key := parts[1]
-		return n.kv.Get(key)
-	case CommandState:
-		return fmt.Sprintf("term=%d leader=%s kv=%s", n.term, n.leader, n.kv)
+		node := nodeStore.Load().(Node)
+		n.term = node.term
+		n.state = StateFollower
+		n.votedFor = node.votedFor
+		n.logs = node.logs
+	case CommandStatus:
+		return n.String()
 	default:
 		return ""
 	}
 	return ""
-}
-
-func (n *Node) isMajority() bool {
-	num := 0
-	for _, v := range n.nodes {
-		if v.healthy {
-			num++
-		}
-	}
-	debug("num=%d, majority=%d", num, len(n.nodes)/2+1)
-	return num >= len(n.nodes)/2+1
-}
-
-func (n *Node) hasQuorum() bool {
-	num := 0
-	for _, v := range n.nodes {
-		if !v.offline {
-			num++
-		}
-	}
-	debug("num=%d, quorum=%d", num, len(n.nodes)/2+1)
-	return num >= len(n.nodes)/2+1
 }
 
 func main() {
@@ -171,7 +109,7 @@ func main() {
 		if result != "" {
 			fmt.Fprintln(out, result)
 		}
-		debug("line=%s, node=%+v, kv=%s", line, node, node.kv)
+		debug("line=%s, node=%+v", line, node)
 	}
 	if err := sc.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error reading input:", err)
