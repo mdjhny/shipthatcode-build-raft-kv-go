@@ -1,2 +1,1 @@
-OK
-term=2 leader=2 kv=x=5
+state=follower term=7 voted_for=c2 log_len=1

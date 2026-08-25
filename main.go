@@ -75,7 +75,9 @@ func (n *Node) handleCmd(parts []string) string {
 		cmd := parts[2]
 		n.logs = append(n.logs, LogEntry{term: term, cmd: cmd})
 	case CommandCrash:
-		nodeStore.Store(*n)
+		if n.term > 0 {
+			nodeStore.Store(*n)
+		}
 		n.term = 0
 		n.votedFor = ""
 		n.logs = nil
