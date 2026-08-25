@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type NodeState string
@@ -34,26 +35,28 @@ const (
 )
 
 type KV struct {
-	m map[string]string
+	keys []string
+	m    map[string]string
 }
 
-func (k KV) String() string {
+func (k *KV) String() string {
 	if len(k.m) == 0 {
 		return "-"
 	}
-	parts := make([]string, 0, len(k.m))
-	for key, val := range k.m {
-		parts = append(parts, fmt.Sprintf("%s=%v", key, val))
+	parts := make([]string, 0, len(k.keys))
+	for _, key := range k.keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", key, k.m[key]))
 	}
 
 	return strings.Join(parts, ",")
 }
 
-func (k KV) Set(key, val string) {
+func (k *KV) Set(key, val string) {
+	k.keys = append(k.keys, key)
 	k.m[key] = val
 }
 
-func (k KV) Get(key string) string {
+func (k *KV) Get(key string) string {
 	v, ok := k.m[key]
 	if !ok {
 		return "NIL"
@@ -65,7 +68,7 @@ type Node struct {
 	nodes  map[string]NodeInfo
 	term   int
 	leader string
-	kv     KV
+	kv     *KV
 }
 
 func newNode() *Node {
@@ -82,7 +85,7 @@ func (n *Node) handleCmd(parts []string) string {
 			n.nodes[strconv.Itoa(i+1)] = NodeInfo{state: StateFollower, healthy: true}
 		}
 		n.term = 0
-		n.kv = KV{m: map[string]string{}}
+		n.kv = &KV{m: map[string]string{}}
 	case CommandTimeout:
 		node := parts[1]
 		n.term++
@@ -96,9 +99,10 @@ func (n *Node) handleCmd(parts []string) string {
 		if n.leader == node {
 			n.leader = ""
 		}
-		nn := n.nodes[node]
-		nn.healthy = false
-		n.nodes[node] = nn
+		delete(n.nodes, node)
+		// nn := n.nodes[node]
+		// nn.healthy = false
+		// n.nodes[node] = nn
 	case CommandRecover:
 		node := parts[1]
 		n.nodes[node] = NodeInfo{state: StateFollower, healthy: true}
@@ -113,12 +117,12 @@ func (n *Node) handleCmd(parts []string) string {
 		n.kv.Set(key, val)
 		return "OK"
 	case CommandRead:
-		if n.leader == "" {
-			return "NO_LEADER"
-		}
-		if !n.isHealthy() {
-			return "NO_QUORUM"
-		}
+		// if n.leader == "" {
+		// 	return "NO_LEADER"
+		// }
+		// if !n.isHealthy() {
+		// 	return "NO_QUORUM"
+		// }
 		key := parts[1]
 		return n.kv.Get(key)
 	case CommandState:
@@ -136,7 +140,8 @@ func (n *Node) isHealthy() bool {
 			num++
 		}
 	}
-	return num >= len(n.nodes)/2+1
+	debug("num=%d, quorum=%d", num, len(n.nodes)/2+1)
+	return num >= len(n.nodes)/2
 }
 
 func main() {
@@ -155,8 +160,26 @@ func main() {
 		if result != "" {
 			fmt.Fprintln(out, result)
 		}
+		debug("line=%s, node=%+v, kv=%s", line, node, node.kv)
 	}
 	if err := sc.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error reading input:", err)
 	}
+}
+
+var (
+	debugger     *os.File
+	debuggerOnce sync.Once
+)
+
+func debug(format string, a ...interface{}) {
+	debuggerOnce.Do(func() {
+		f, err := os.Create("debug.log")
+		if err != nil {
+			panic(err)
+		}
+		debugger = f
+	})
+	fmt.Fprintf(debugger, format, a...)
+	fmt.Fprintln(debugger)
 }
