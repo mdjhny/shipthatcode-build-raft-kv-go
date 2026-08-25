@@ -87,35 +87,38 @@ func (n *Node) handleCmd(parts []string) string {
 		node := parts[1]
 		n.term++
 		n.nodes[node] = NodeInfo{state: StateCandidate, healthy: false}
-		num := 0
-		for _, v := range n.nodes {
-			if v.healthy {
-				num++
-			}
-		}
-		if num >= len(n.nodes)/2+1 {
+		if n.isHealthy() {
 			n.leader = node
 			n.nodes[node] = NodeInfo{state: StateLeader, healthy: true}
 		}
 	case CommandCrash:
 		node := parts[1]
 		if n.leader == node {
-			n.leader = "none"
+			n.leader = ""
 		}
-		ni := n.nodes[node]
-		ni.healthy = false
+		nn := n.nodes[node]
+		nn.healthy = false
+		n.nodes[node] = nn
 	case CommandRecover:
 		node := parts[1]
 		n.nodes[node] = NodeInfo{state: StateFollower, healthy: true}
 	case CommandWrite:
-		key, val := parts[1], parts[2]
-		n.kv.Set(key, val)
-		// TODO
-		if n.leader == "" || n.leader == "none" {
+		if n.leader == "" {
 			return "NO_LEADER"
 		}
+		if !n.isHealthy() {
+			return "NO_QUORUM"
+		}
+		key, val := parts[1], parts[2]
+		n.kv.Set(key, val)
 		return "OK"
 	case CommandRead:
+		if n.leader == "" {
+			return "NO_LEADER"
+		}
+		if !n.isHealthy() {
+			return "NO_QUORUM"
+		}
 		key := parts[1]
 		return n.kv.Get(key)
 	case CommandState:
@@ -124,6 +127,16 @@ func (n *Node) handleCmd(parts []string) string {
 		return ""
 	}
 	return ""
+}
+
+func (n *Node) isHealthy() bool {
+	num := 0
+	for _, v := range n.nodes {
+		if v.healthy {
+			num++
+		}
+	}
+	return num >= len(n.nodes)/2+1
 }
 
 func main() {
