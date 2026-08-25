@@ -1,1 +1,2 @@
-term=1 leader=1 kv=-
+OK
+term=2 leader=2 kv=x=5

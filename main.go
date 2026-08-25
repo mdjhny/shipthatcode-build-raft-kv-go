@@ -91,7 +91,7 @@ func (n *Node) handleCmd(parts []string) string {
 		node := parts[1]
 		n.term++
 		n.nodes[node] = NodeInfo{state: StateCandidate, healthy: false}
-		if n.isHealthy() {
+		if n.isMajority() {
 			n.leader = node
 			n.nodes[node] = NodeInfo{state: StateLeader, healthy: true}
 		}
@@ -110,19 +110,19 @@ func (n *Node) handleCmd(parts []string) string {
 		if n.leader == "" {
 			return "NO_LEADER"
 		}
-		if !n.isHealthy() {
+		if !n.hasQuorum() {
 			return "NO_QUORUM"
 		}
 		key, val := parts[1], parts[2]
 		n.kv.Set(key, val)
 		return "OK"
 	case CommandRead:
-		// if n.leader == "" {
-		// 	return "NO_LEADER"
-		// }
-		// if !n.isHealthy() {
-		// 	return "NO_QUORUM"
-		// }
+		if n.leader == "" {
+			return "NO_LEADER"
+		}
+		if !n.hasQuorum() {
+			return "NO_QUORUM"
+		}
 		key := parts[1]
 		return n.kv.Get(key)
 	case CommandState:
@@ -133,10 +133,21 @@ func (n *Node) handleCmd(parts []string) string {
 	return ""
 }
 
-func (n *Node) isHealthy() bool {
+func (n *Node) isMajority() bool {
 	num := 0
 	for _, v := range n.nodes {
-		if v.healthy && !v.offline {
+		if v.healthy {
+			num++
+		}
+	}
+	debug("num=%d, majority=%d", num, len(n.nodes)/2+1)
+	return num >= len(n.nodes)/2+1
+}
+
+func (n *Node) hasQuorum() bool {
+	num := 0
+	for _, v := range n.nodes {
+		if !v.offline {
 			num++
 		}
 	}
