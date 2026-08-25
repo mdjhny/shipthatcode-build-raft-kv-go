@@ -20,6 +20,7 @@ const (
 type NodeInfo struct {
 	state   NodeState
 	healthy bool
+	offline bool
 }
 
 type Command string
@@ -99,9 +100,12 @@ func (n *Node) handleCmd(parts []string) string {
 		if n.leader == node {
 			n.leader = ""
 		}
+		nn := n.nodes[node]
+		nn.offline = true
+		n.nodes[node] = nn
 	case CommandRecover:
 		node := parts[1]
-		n.nodes[node] = NodeInfo{state: StateFollower, healthy: true}
+		n.nodes[node] = NodeInfo{state: StateFollower, healthy: true, offline: false}
 	case CommandWrite:
 		if n.leader == "" {
 			return "NO_LEADER"
@@ -132,7 +136,7 @@ func (n *Node) handleCmd(parts []string) string {
 func (n *Node) isHealthy() bool {
 	num := 0
 	for _, v := range n.nodes {
-		if v.healthy {
+		if v.healthy && !v.offline {
 			num++
 		}
 	}
