@@ -41,7 +41,12 @@ func (k KV) String() string {
 	if len(k.m) == 0 {
 		return "-"
 	}
-	return fmt.Sprintf("%s", k.m)
+	parts := make([]string, 0, len(k.m))
+	for key, val := range k.m {
+		parts = append(parts, fmt.Sprintf("%s=%v", key, val))
+	}
+
+	return strings.Join(parts, ",")
 }
 
 func (k KV) Set(key, val string) {
