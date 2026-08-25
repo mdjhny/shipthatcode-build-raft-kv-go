@@ -99,10 +99,10 @@ func (n *Node) handleCmd(parts []string) string {
 		if n.leader == node {
 			n.leader = ""
 		}
-		delete(n.nodes, node)
-		// nn := n.nodes[node]
-		// nn.healthy = false
-		// n.nodes[node] = nn
+		// delete(n.nodes, node)
+		nn := n.nodes[node]
+		nn.healthy = false
+		n.nodes[node] = nn
 	case CommandRecover:
 		node := parts[1]
 		n.nodes[node] = NodeInfo{state: StateFollower, healthy: true}
@@ -141,7 +141,7 @@ func (n *Node) isHealthy() bool {
 		}
 	}
 	debug("num=%d, quorum=%d", num, len(n.nodes)/2+1)
-	return num >= len(n.nodes)/2
+	return num >= len(n.nodes)/2+1
 }
 
 func main() {
